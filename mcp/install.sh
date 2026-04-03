@@ -3,7 +3,6 @@
 # Run once after cloning the repo.
 
 set -e
-cd "$(dirname "$0")"
 
 PYTHON=$(asdf which python 2>/dev/null || which python3)
 MCP_DIR="$(cd "$(dirname "$0")" && pwd)"
