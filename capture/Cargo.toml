@@ -1,0 +1,11 @@
+[package]
+name = "nakoscope-capture"
+version = "0.1.0"
+edition = "2021"
+description = "High-speed USB capture binary for nakoscope (VDS1022)"
+# USB protocol derived from https://github.com/florentbr/OWON-VDS1022 (MIT)
+
+[dependencies]
+rusb  = "0.9"
+clap  = { version = "4", features = ["derive"] }
+ctrlc = { version = "3", features = ["termination"] }
