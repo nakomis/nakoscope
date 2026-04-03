@@ -129,10 +129,9 @@ class VDS1022Device(CaptureDevice):
                     coupling = coupling_const,
                     range    = closest_range,
                     probe    = probe_str,
-                    on       = True,
                 )
             else:
-                self._dev.set_channel(ch_const, on=False)
+                self._dev.on[ch_const] = False
 
         # Find the closest valid sampling rate
         valid_rates = list(_vds.SAMPLING_RATES)
