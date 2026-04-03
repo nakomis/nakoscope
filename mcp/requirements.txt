@@ -1,0 +1,6 @@
+mcp[cli]>=1.0.0
+h5py>=3.10
+numpy>=1.24
+
+# S3 backend (optional)
+# boto3>=1.34

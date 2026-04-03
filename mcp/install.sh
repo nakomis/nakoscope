@@ -9,7 +9,7 @@ PYTHON=$(asdf which python 2>/dev/null || which python3)
 MCP_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "Installing nakoscope MCP dependencies..."
-"$PYTHON" -m pip install -q -e .
+"$PYTHON" -m pip install -q -r "$MCP_DIR/requirements.txt"
 
 echo "Registering MCP server with Claude Code (user scope)..."
 claude mcp add nakoscope --scope user -- "$PYTHON" "$MCP_DIR/server.py"
