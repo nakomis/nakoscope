@@ -23,6 +23,8 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 # Resolve the invoking user's Python (asdf-managed) even under sudo
 REAL_USER="${SUDO_USER:-$USER}"
 PYTHON=$(su - "$REAL_USER" -c 'asdf which python 2>/dev/null || which python3')
+# Resolve claude CLI — may live in ~/.local/bin which su - doesn't pick up
+CLAUDE=$(su - "$REAL_USER" -c 'command -v claude || true')
 
 INSTALL_DIR="/usr/local/lib/nakoscope"
 BIN_PATH="/usr/local/bin/nakoscope"
@@ -134,7 +136,12 @@ fi
 
 # ── 8. MCP server ─────────────────────────────────────────────────────────────
 echo "Installing MCP server (as $REAL_USER)..."
-su - "$REAL_USER" -c "bash \"$REPO/mcp/install.sh\""
+if [ -z "$CLAUDE" ]; then
+    echo "  WARNING: claude CLI not found — skipping MCP registration."
+    echo "  Run 'claude mcp add nakoscope --scope user -- $PYTHON $REPO/mcp/server.py' manually."
+else
+    su - "$REAL_USER" -c "CLAUDE_BIN=\"$CLAUDE\" bash \"$REPO/mcp/install.sh\""
+fi
 
 echo
 echo "=== Setup complete ==="
