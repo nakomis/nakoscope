@@ -169,6 +169,12 @@ class VDS1022Device(CaptureDevice):
         """Spawn nakoscope-capture and stream frames from its stdout."""
         ch_arg = 'both' if len(self._channels) > 1 else self._channels[0][-1]
 
+        # Release the Python USB handle — libusb only allows one owner.
+        # The Rust binary will re-open and re-configure the device itself.
+        if self._dev is not None:
+            self._dev.dispose()
+            self._dev = None
+
         cmd = [
             str(_RUST_BIN),
             '--rate',     str(int(self._sample_rate)),
