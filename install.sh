@@ -38,7 +38,16 @@ echo "Python:  $PYTHON ($($PYTHON --version))"
 echo "User:    $REAL_USER"
 echo
 
-# ── 1. Install app files (root-owned) ─────────────────────────────────────────
+# ── 1. libusb (required by PyUSB for USB oscilloscope access) ─────────────────
+echo "Checking libusb..."
+if su - "$REAL_USER" -c 'brew list libusb &>/dev/null'; then
+    echo "  Already installed."
+else
+    echo "  Installing via Homebrew..."
+    su - "$REAL_USER" -c 'brew install libusb'
+fi
+
+# ── 3. Install app files (root-owned) ─────────────────────────────────────────
 echo "Installing app files to $INSTALL_DIR ..."
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
@@ -49,7 +58,7 @@ chmod -R 755 "$INSTALL_DIR"
 find "$INSTALL_DIR" -type f -name "*.py" -exec chmod 644 {} \;
 echo "  Done."
 
-# ── 2. Install Python dependencies (as the real user) ─────────────────────────
+# ── 4. Install Python dependencies (as the real user) ─────────────────────────
 echo "Installing Python dependencies..."
 su - "$REAL_USER" -c "\"$PYTHON\" -m pip install -q -r \"$INSTALL_DIR/app/requirements.txt\""
 
@@ -63,7 +72,7 @@ else
     echo "  Clone https://github.com/florentbr/OWON-VDS1022 and re-run this script."
 fi
 
-# ── 3. Create root-owned wrapper script ───────────────────────────────────────
+# ── 5. Create root-owned wrapper script ───────────────────────────────────────
 echo "Creating $BIN_PATH ..."
 cat > "$BIN_PATH" <<WRAPPER
 #!/bin/bash
@@ -78,14 +87,14 @@ chown root:wheel "$BIN_PATH"
 chmod 755 "$BIN_PATH"
 echo "  Done."
 
-# ── 4. Log directory ──────────────────────────────────────────────────────────
+# ── 6. Log directory ──────────────────────────────────────────────────────────
 echo "Creating $LOG_DIR ..."
 mkdir -p "$LOG_DIR"
 chown root:wheel "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 echo "  Done."
 
-# ── 5. Data directory (user-owned — can be large) ─────────────────────────────
+# ── 7. Data directory (user-owned — can be large) ─────────────────────────────
 DATA_DIR="$REPO/data"
 echo "Creating data directory $DATA_DIR ..."
 mkdir -p "$DATA_DIR"
@@ -93,14 +102,14 @@ chown "$REAL_USER" "$DATA_DIR"
 echo "Excluding from Time Machine..."
 tmutil addexclusion "$DATA_DIR" 2>/dev/null && echo "  Done." || echo "  (tmutil unavailable — skip)"
 
-# ── 6. Sudoers entry ──────────────────────────────────────────────────────────
+# ── 8. Sudoers entry ──────────────────────────────────────────────────────────
 echo "Writing sudoers entry ..."
 echo "$REAL_USER ALL=(root) NOPASSWD: $BIN_PATH" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
 echo "  $SUDOERS_FILE"
 echo "  Grant: $REAL_USER -> $BIN_PATH only (root-owned, not user-editable)"
 
-# ── 7. Config file (user-owned) ───────────────────────────────────────────────
+# ── 9. Config file (user-owned) ───────────────────────────────────────────────
 CONFIG_FILE="/Users/$REAL_USER/.nakoscope.yaml"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Creating starter config at $CONFIG_FILE ..."
@@ -134,7 +143,7 @@ else
     echo "Config already exists at $CONFIG_FILE — leaving it unchanged."
 fi
 
-# ── 8. MCP server ─────────────────────────────────────────────────────────────
+# ── 10. MCP server ────────────────────────────────────────────────────────────
 echo "Installing MCP server (as $REAL_USER)..."
 if [ -z "$CLAUDE" ]; then
     echo "  WARNING: claude CLI not found — skipping MCP registration."

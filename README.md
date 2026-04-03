@@ -26,9 +26,12 @@ Currently supports the **OWON VDS1022/VDS1022i** oscilloscope.
 ## Requirements
 
 - macOS (tested on Apple Silicon)
+- [Homebrew](https://brew.sh/)
 - Python 3.11+ managed via [asdf](https://asdf-vm.com/)
 - [OWON VDS1022 Python API](https://github.com/florentbr/OWON-VDS1022)
 - For S3 backend: `boto3` and an AWS account
+
+`libusb` is installed automatically by `install.sh` via Homebrew.
 
 ## Installation
 
