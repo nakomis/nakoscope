@@ -51,9 +51,12 @@ _CHANNEL_MAP = {'CH1': _vds.CH1, 'CH2': _vds.CH2}
 _COUPLING_MAP = {'DC': _vds.DC, 'AC': _vds.AC}
 
 # ── Rust binary location ───────────────────────────────────────────────────────
+# install.sh copies the binary to /usr/local/lib/nakoscope/bin/ (root-owned).
+# When running from the repo directly, also check the cargo build output.
 
-_HERE = Path(__file__).parent
-_RUST_BIN = _HERE.parent.parent.parent.parent / 'capture' / 'target' / 'release' / 'nakoscope-capture'
+_INSTALLED_BIN = Path('/usr/local/lib/nakoscope/bin/nakoscope-capture')
+_REPO_BIN      = Path(__file__).parent.parent.parent.parent / 'capture' / 'target' / 'release' / 'nakoscope-capture'
+_RUST_BIN      = _INSTALLED_BIN if _INSTALLED_BIN.exists() else _REPO_BIN
 
 # Frame packet magic
 _MAGIC = b'NSC\0'

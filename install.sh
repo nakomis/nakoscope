@@ -23,10 +23,17 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 # Resolve the invoking user's Python (asdf-managed) even under sudo
 REAL_USER="${SUDO_USER:-$USER}"
 PYTHON=$(su - "$REAL_USER" -c 'asdf which python 2>/dev/null || which python3')
-# Resolve claude CLI — may live in ~/.local/bin which su - doesn't pick up
-CLAUDE=$(su - "$REAL_USER" -c 'command -v claude || true')
+# Resolve claude CLI — check ~/.local/bin explicitly as su - may not load it
+CLAUDE=$(su - "$REAL_USER" -c '
+    if command -v claude &>/dev/null; then
+        command -v claude
+    elif [ -x "$HOME/.local/bin/claude" ]; then
+        echo "$HOME/.local/bin/claude"
+    fi
+')
 
 INSTALL_DIR="/usr/local/lib/nakoscope"
+CAPTURE_BIN="$INSTALL_DIR/bin/nakoscope-capture"
 BIN_PATH="/usr/local/bin/nakoscope"
 LOG_DIR="/var/log/nakoscope"
 SUDOERS_FILE="/etc/sudoers.d/nakoscope"
@@ -57,6 +64,21 @@ chmod -R 755 "$INSTALL_DIR"
 # Python files readable but not writable by anyone but root
 find "$INSTALL_DIR" -type f -name "*.py" -exec chmod 644 {} \;
 echo "  Done."
+
+# ── 3b. Install Rust capture binary ───────────────────────────────────────────
+RUST_SRC="$REPO/capture/target/release/nakoscope-capture"
+if [ -f "$RUST_SRC" ]; then
+    echo "Installing Rust capture binary..."
+    mkdir -p "$INSTALL_DIR/bin"
+    cp "$RUST_SRC" "$CAPTURE_BIN"
+    chown root:wheel "$CAPTURE_BIN"
+    chmod 755 "$CAPTURE_BIN"
+    echo "  Installed: $CAPTURE_BIN"
+else
+    echo "  WARNING: Rust binary not built — falling back to Python API (max ~400 KS/s)."
+    echo "  Build it with: cd $REPO/capture && cargo build --release"
+    echo "  Then re-run: sudo bash $REPO/install.sh"
+fi
 
 # ── 4. Install Python dependencies (as the real user) ─────────────────────────
 echo "Installing Python dependencies..."
