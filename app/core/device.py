@@ -1,4 +1,4 @@
-"""Abstract base class for oscilloscope capture devices."""
+"""Abstract base class for nakoscope capture devices."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -18,7 +18,7 @@ class ChannelData:
 
 @dataclass
 class CaptureFrame:
-    """One frame of data from the oscilloscope (all active channels)."""
+    """One frame of data from the scope (all active channels)."""
     clock: float               # monotonic time (seconds) — for sequencing frames
     channels: dict             # channel name -> ChannelData
 
@@ -35,7 +35,7 @@ class DeviceInfo:
 
 
 class CaptureDevice(ABC):
-    """Abstract oscilloscope device interface.
+    """Abstract capture device interface.
 
     Implementations wrap a specific hardware API (e.g. VDS1022).
     The recorder calls connect(), configure(), then iterates frames().

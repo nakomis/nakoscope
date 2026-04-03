@@ -1,4 +1,4 @@
-"""Recorder: coordinates a CaptureDevice with HDF5Storage."""
+"""Recorder: coordinates a CaptureDevice with a StorageBackend."""
 
 import threading
 import time
@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Callable
 
 from .device import CaptureDevice
-from .storage import HDF5Storage
+from .storage import StorageBackend
 
 
 @dataclass
@@ -29,7 +29,7 @@ class Recorder:
         stats = recorder.stop()
     """
 
-    def __init__(self, device: CaptureDevice, storage: HDF5Storage,
+    def __init__(self, device: CaptureDevice, storage: StorageBackend,
                  on_frame: Optional[Callable[[RecorderStats], None]] = None):
         """
         Args:
