@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Oscilloscope capture CLI.
+"""Nakoscope capture CLI.
 
 Commands:
   record   Start a recording session (Ctrl+C to stop).
   list     List recent sessions.
   info     Show details for a specific session.
 
+Settings are read from ~/.nakoscope.yaml (CLI flags override config).
 Requires root on macOS (libusb USB access):
   sudo python cli.py record
 """
@@ -17,9 +18,17 @@ import sys
 import time
 from pathlib import Path
 
+# Ensure 'core' is importable from wherever the script is called
+sys.path.insert(0, str(Path(__file__).parent))
+
+
+def _cfg(key):
+    """Read a config value (lazy-loads ~/.nakoscope.yaml)."""
+    from core.config import get
+    return get(key)
+
 
 def _make_storage(args):
-    sys.path.insert(0, str(Path(__file__).parent))
     from core.storage import create_backend
     return create_backend(backend=args.backend or None)
 
@@ -129,28 +138,34 @@ def cmd_info(args):
 def _add_backend_arg(p):
     p.add_argument(
         '--backend', default=None, choices=['hdf5', 's3'],
-        help='Storage backend (default: s3 if OSCILLOSCOPE_S3_BUCKET is set, else hdf5)',
+        help='Storage backend (default: s3 if NAKOSCOPE_S3_BUCKET is set, else hdf5)',
     )
 
 
 def main():
+    # Load config early so argparse defaults reflect it
+    cap = _cfg('capture') or {}
+
     parser = argparse.ArgumentParser(
-        description='Oscilloscope capture tool',
+        description='Nakoscope capture tool',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     sub = parser.add_subparsers(dest='command', required=True)
 
     # --- record ---
     p_rec = sub.add_parser('record', help='Start a recording session (Ctrl+C to stop)')
-    p_rec.add_argument('--notes',       default='',         help='Free-text notes for this session')
-    p_rec.add_argument('--channels',    default=['CH1', 'CH2'], nargs='+', help='Channels to capture')
-    p_rec.add_argument('--sample-rate', default=250_000,    type=float,   dest='sample_rate',
-                       help='Sample rate in Hz (e.g. 250000)')
-    p_rec.add_argument('--v-range',     default=10.0,       type=float,   dest='v_range',
+    p_rec.add_argument('--notes',       default='',  help='Free-text notes for this session')
+    p_rec.add_argument('--channels',    default=cap.get('channels', ['CH1', 'CH2']),
+                       nargs='+', help='Channels to capture')
+    p_rec.add_argument('--sample-rate', default=cap.get('sample_rate', 250_000),
+                       type=float, dest='sample_rate', help='Sample rate in Hz')
+    p_rec.add_argument('--v-range',     default=cap.get('v_range', 10.0),
+                       type=float, dest='v_range',
                        help='Full-scale voltage range across 10 divs (e.g. 10 = ±5V)')
-    p_rec.add_argument('--coupling',    default='DC',       choices=['DC', 'AC'])
-    p_rec.add_argument('--probe',       default=1.0,        type=float,
-                       help='Probe attenuation (1 for x1, 10 for x10)')
+    p_rec.add_argument('--coupling',    default=cap.get('coupling', 'DC'),
+                       choices=['DC', 'AC'])
+    p_rec.add_argument('--probe',       default=cap.get('probe', 1.0),
+                       type=float, help='Probe attenuation (1 for x1, 10 for x10)')
     _add_backend_arg(p_rec)
 
     # --- list ---
@@ -165,10 +180,6 @@ def main():
     _add_backend_arg(p_info)
 
     args = parser.parse_args()
-
-    # Add the app directory to sys.path so 'core' is importable
-    sys.path.insert(0, str(Path(__file__).parent))
-
     dispatch = {'record': cmd_record, 'list': cmd_list, 'info': cmd_info}
     dispatch[args.command](args)
 

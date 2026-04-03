@@ -1,8 +1,9 @@
 h5py>=3.10
 numpy>=1.24
+pyyaml>=6.0
 pyusb>=1.2
 
-# S3 backend (optional — only needed if using OSCILLOSCOPE_S3_BUCKET)
+# S3 backend (optional — only needed if using NAKOSCOPE_S3_BUCKET)
 # boto3>=1.34
 
 # The vds1022 Python API must also be installed separately:

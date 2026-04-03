@@ -12,9 +12,10 @@ Reads check the local cache first; if the session file is absent it is
 downloaded from S3 before being opened.
 
 AWS credentials are resolved by boto3 in the standard order:
-  1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-  2. ~/.aws/credentials
-  3. IAM instance role / ECS task role
+  1. aws_profile from ~/.nakoscope.yaml (or NAKOSCOPE_S3_PROFILE env var)
+  2. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+  3. ~/.aws/credentials
+  4. IAM instance role / ECS task role
 
 Dependencies: boto3 (pip install boto3)
 """
@@ -53,12 +54,19 @@ class S3Backend(StorageBackend):
     Reads check the cache before downloading from S3.
     """
 
-    def __init__(self, bucket: str, prefix: str = 'oscilloscope/', cache_dir=None):
+    def __init__(
+        self,
+        bucket: str,
+        prefix: str = 'nakoscope/',
+        cache_dir=None,
+        aws_profile: Optional[str] = None,
+    ):
         self.bucket = bucket
         self.prefix = prefix.rstrip('/') + '/'
-        self.cache_dir = Path(cache_dir or Path.home() / '.cache' / 'oscilloscope')
+        self.cache_dir = Path(cache_dir or Path.home() / '.cache' / 'nakoscope')
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._s3 = boto3.client('s3')
+        session = boto3.Session(profile_name=aws_profile) if aws_profile else boto3.Session()
+        self._s3 = session.client('s3')
 
     # ── Write ──────────────────────────────────────────────────────────────────
 

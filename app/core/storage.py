@@ -4,18 +4,21 @@ Available backends:
   hdf5  — single local HDF5 file, all sessions as groups (default)
   s3    — one HDF5 file per session in S3, with a local cache
 
-Configuration via environment variables or keyword arguments to create_backend():
+Backend selection priority (highest wins):
+  1. Explicit backend= kwarg to create_backend()
+  2. NAKOSCOPE_BACKEND environment variable
+  3. backend key in ~/.nakoscope.yaml
+  4. Auto-detect: 's3' if a bucket is configured, else 'hdf5'
 
+Environment variables (override config file):
   hdf5:
-    OSCILLOSCOPE_DATA   path to the .h5 file
-                        (default: <repo>/data/captures.h5)
-
+    NAKOSCOPE_DATA          path to the .h5 file
   s3:
-    OSCILLOSCOPE_S3_BUCKET   S3 bucket name
-    OSCILLOSCOPE_S3_PREFIX   key prefix (default: 'oscilloscope/')
-    OSCILLOSCOPE_S3_CACHE    local cache directory
-                             (default: ~/.cache/oscilloscope)
-    AWS credentials via the standard boto3 chain (env vars, ~/.aws, IAM role, etc.)
+    NAKOSCOPE_S3_BUCKET     S3 bucket name
+    NAKOSCOPE_S3_PREFIX     key prefix (default: 'nakoscope/')
+    NAKOSCOPE_S3_CACHE      local cache directory
+    NAKOSCOPE_S3_PROFILE    AWS profile name (e.g. 'nakom.is-sandbox')
+    Standard AWS env vars (AWS_ACCESS_KEY_ID, etc.) also honoured by boto3.
 """
 
 import os
@@ -25,7 +28,7 @@ from typing import Optional
 
 
 class StorageBackend(ABC):
-    """Abstract interface for oscilloscope session storage."""
+    """Abstract interface for nakoscope session storage."""
 
     # ── Write API (called by Recorder) ────────────────────────────────────────
 
@@ -86,36 +89,78 @@ def create_backend(backend: Optional[str] = None, **kwargs) -> StorageBackend:
     """Instantiate and return a StorageBackend.
 
     Args:
-        backend:  'hdf5' or 's3'. If None, inferred from environment:
-                  uses 's3' when OSCILLOSCOPE_S3_BUCKET is set, else 'hdf5'.
-        **kwargs: Backend-specific options (override environment variables).
+        backend:  'hdf5' or 's3'. If None, resolved from env/config/auto-detect.
+        **kwargs: Backend-specific overrides.
                   hdf5: path (str|Path)
-                  s3:   bucket (str), prefix (str), cache_dir (str|Path)
+                  s3:   bucket, prefix, cache_dir, aws_profile (all str)
     """
-    if backend is None:
-        backend = 's3' if os.environ.get('OSCILLOSCOPE_S3_BUCKET') else 'hdf5'
+    from .config import get as cfg
 
+    # ── Resolve backend ────────────────────────────────────────────────────────
+    if backend is None:
+        backend = (
+            os.environ.get('NAKOSCOPE_BACKEND')
+            or cfg('backend')
+            or None
+        )
+    if backend is None:
+        # Auto-detect: use s3 if a bucket is configured anywhere
+        bucket_hint = (
+            kwargs.get('bucket')
+            or os.environ.get('NAKOSCOPE_S3_BUCKET')
+            or cfg('s3.bucket')
+        )
+        backend = 's3' if bucket_hint else 'hdf5'
+
+    # ── HDF5 ───────────────────────────────────────────────────────────────────
     if backend == 'hdf5':
         from .backends.hdf5 import LocalHDF5Backend
-        path = kwargs.get('path') or os.environ.get(
-            'OSCILLOSCOPE_DATA',
-            Path(__file__).parent.parent.parent / 'data' / 'captures.h5',
+        path = (
+            kwargs.get('path')
+            or os.environ.get('NAKOSCOPE_DATA')
+            or cfg('data_path')
+            or Path(__file__).parent.parent.parent / 'data' / 'captures.h5'
         )
         return LocalHDF5Backend(path)
 
+    # ── S3 ─────────────────────────────────────────────────────────────────────
     if backend == 's3':
         from .backends.s3 import S3Backend
-        bucket = kwargs.get('bucket') or os.environ.get('OSCILLOSCOPE_S3_BUCKET')
+
+        bucket = (
+            kwargs.get('bucket')
+            or os.environ.get('NAKOSCOPE_S3_BUCKET')
+            or cfg('s3.bucket')
+        )
         if not bucket:
             raise ValueError(
-                'S3 backend requires OSCILLOSCOPE_S3_BUCKET to be set '
-                '(or pass bucket= to create_backend).'
+                'S3 backend requires a bucket name. Set NAKOSCOPE_S3_BUCKET, '
+                "add 's3.bucket' to ~/.nakoscope.yaml, or pass bucket= to create_backend()."
             )
-        prefix    = kwargs.get('prefix')    or os.environ.get('OSCILLOSCOPE_S3_PREFIX', 'oscilloscope/')
-        cache_dir = kwargs.get('cache_dir') or os.environ.get(
-            'OSCILLOSCOPE_S3_CACHE',
-            Path.home() / '.cache' / 'oscilloscope',
+
+        prefix = (
+            kwargs.get('prefix')
+            or os.environ.get('NAKOSCOPE_S3_PREFIX')
+            or cfg('s3.prefix')
+            or 'nakoscope/'
         )
-        return S3Backend(bucket=bucket, prefix=prefix, cache_dir=cache_dir)
+        cache_dir = (
+            kwargs.get('cache_dir')
+            or os.environ.get('NAKOSCOPE_S3_CACHE')
+            or cfg('s3.cache_dir')
+            or Path.home() / '.cache' / 'nakoscope'
+        )
+        aws_profile = (
+            kwargs.get('aws_profile')
+            or os.environ.get('NAKOSCOPE_S3_PROFILE')
+            or cfg('s3.aws_profile')
+        )
+
+        return S3Backend(
+            bucket      = bucket,
+            prefix      = prefix,
+            cache_dir   = cache_dir,
+            aws_profile = aws_profile,
+        )
 
     raise ValueError(f"Unknown storage backend: {backend!r}. Choose 'hdf5' or 's3'.")

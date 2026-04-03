@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Oscilloscope MCP Server.
 
-Provides Claude with read access to the oscilloscope HDF5 datastore so that
+Provides Claude with read access to the nakoscope HDF5 datastore so that
 waveform captures can be directly analysed in conversation.
 
 Tools:
@@ -22,7 +22,7 @@ sys.path.insert(0, str(_repo_root / 'app'))
 
 from core.storage import create_backend, StorageBackend
 
-mcp = FastMCP('oscilloscope')
+mcp = FastMCP('nakoscope')
 
 _backend: StorageBackend | None = None
 
@@ -42,7 +42,7 @@ def list_sessions(
     since: str = '',
     search: str = '',
 ) -> list[dict]:
-    """List oscilloscope recording sessions, newest first.
+    """List nakoscope recording sessions, newest first.
 
     Args:
         limit:  Maximum number of sessions to return (default 20).
