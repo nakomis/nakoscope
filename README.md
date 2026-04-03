@@ -168,6 +168,3 @@ The VDS1022 USB protocol is derived from [florentbr/OWON-VDS1022](https://github
 
 If nakoscope is useful to you, consider donating to florentbr via their project page.
 
-## Licence
-
-MIT
