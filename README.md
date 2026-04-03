@@ -164,14 +164,10 @@ s3://bucket/prefix/
 
 ## Credits
 
-The VDS1022 USB protocol is derived from [florentbr/OWON-VDS1022](https://github.com/florentbr/OWON-VDS1022) (MIT licence). The Python API from that project is used directly for device connection and configuration, and the Rust capture binary (`nakoscope-capture`) re-implements the same USB protocol for high-speed roll-mode capture. Many thanks to florentbr for the excellent reverse-engineering work.
+The VDS1022 USB protocol is derived from [florentbr/OWON-VDS1022](https://github.com/florentbr/OWON-VDS1022). The Python API from that project is used directly for device connection and configuration, and the Rust capture binary (`nakoscope-capture`) re-implements the same USB protocol for high-speed roll-mode capture. Many thanks to florentbr for the excellent reverse-engineering work.
 
 If nakoscope is useful to you, consider donating to florentbr via their project page.
 
 ## Licence
 
 MIT
-
-## Support
-
-[![Donate with PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN)

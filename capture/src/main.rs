@@ -4,7 +4,7 @@
 //! Python nakoscope stack (recorder, storage, MCP) can operate unchanged.
 //!
 //! USB protocol derived from the excellent florentbr/OWON-VDS1022 Python API:
-//! <https://github.com/florentbr/OWON-VDS1022>  (MIT licence)
+//! <https://github.com/florentbr/OWON-VDS1022>
 //!
 //! # Output format
 //!
