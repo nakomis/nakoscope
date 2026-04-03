@@ -93,7 +93,6 @@ def cmd_record(args):
     stats = recorder.stats
     print(f'\nSaved  session={stats.session_id}')
     print(f'       {stats.n_frames} frames  {stats.n_samples:,} samples  {stats.elapsed_s:.1f}s')
-    print(f'       {DATA_PATH}')
 
 
 def cmd_list(args):
@@ -108,7 +107,7 @@ def cmd_list(args):
     print('-' * 90)
     for s in sessions:
         dur  = f'{s["duration_s"]:.1f}s' if s['duration_s'] else '?'
-        samp = f'{s["n_samples"]:,}'
+        samp = f'{s.get("n_samples", 0):,}'
         started = s['started_at'][:19].replace('T', ' ')
         print(f'{s["session_id"]:<30}  {started:>20}  {dur:>6}  {samp:>10}  {s["notes"]}')
 

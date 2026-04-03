@@ -32,8 +32,9 @@ class LocalHDF5Backend(StorageBackend):
 
     # ── Write ──────────────────────────────────────────────────────────────────
 
-    def start_session(self, notes='', device_name='', device_serial='') -> str:
-        session_id = _new_session_id()
+    def start_session(self, notes='', device_name='', device_serial='', session_id=None) -> str:
+        if session_id is None:
+            session_id = _new_session_id()
         with h5py.File(self.path, 'a') as f:
             grp = f.require_group('sessions').create_group(session_id)
             grp.attrs['started_at']    = datetime.now(timezone.utc).isoformat()
@@ -171,6 +172,7 @@ def _session_detail(sid, attrs, channels) -> dict:
         'device_name':   attrs.get('device_name', ''),
         'device_serial': attrs.get('device_serial', ''),
         'n_frames':      int(attrs.get('n_frames', 0)),
+        'n_samples':     sum(ch.get('n_samples', 0) for ch in channels.values()),
         'duration_s':    _duration(attrs),
         'channels':      channels,
     }

@@ -73,9 +73,13 @@ class S3Backend(StorageBackend):
     def start_session(self, notes='', device_name='', device_serial='') -> str:
         session_id = _new_session_id()
 
-        # Delegate to a local HDF5 backend for the in-progress capture
+        # Delegate to a local HDF5 backend for the in-progress capture.
+        # Pass the pre-assigned session_id so the HDF5 group and the S3 key match.
         local = self._local_backend(session_id)
-        local.start_session(notes=notes, device_name=device_name, device_serial=device_serial)
+        local.start_session(
+            notes=notes, device_name=device_name, device_serial=device_serial,
+            session_id=session_id,
+        )
 
         return session_id
 
