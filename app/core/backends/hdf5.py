@@ -172,6 +172,7 @@ def _session_detail(sid, attrs, channels) -> dict:
         'device_name':   attrs.get('device_name', ''),
         'device_serial': attrs.get('device_serial', ''),
         'n_frames':      int(attrs.get('n_frames', 0)),
+        'n_samples':     sum(ch.get('n_samples', 0) for ch in channels.values()),
         'duration_s':    _duration(attrs),
         'channels':      channels,
     }
