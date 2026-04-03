@@ -1,0 +1,6 @@
+h5py>=3.10
+numpy>=1.24
+pyusb>=1.2
+
+# The vds1022 Python API must also be installed separately:
+#   pip install -e ~/repos/florentbr/OWON-VDS1022/api/python
