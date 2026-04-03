@@ -2,5 +2,8 @@ h5py>=3.10
 numpy>=1.24
 pyusb>=1.2
 
+# S3 backend (optional — only needed if using OSCILLOSCOPE_S3_BUCKET)
+# boto3>=1.34
+
 # The vds1022 Python API must also be installed separately:
 #   pip install -e ~/repos/florentbr/OWON-VDS1022/api/python

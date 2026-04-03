@@ -9,6 +9,9 @@ dependencies = [
     "numpy>=1.24",
 ]
 
+[project.optional-dependencies]
+s3 = ["boto3>=1.34"]
+
 [project.scripts]
 oscilloscope-mcp = "server:main"
 
