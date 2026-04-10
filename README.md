@@ -8,7 +8,7 @@ Currently supports the **OWON VDS1022/VDS1022i** oscilloscope.
 
 If you find this useful, please consider buying me a coffee:
 
-[![Donate with PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN)
+[![Donate with PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN&custom=nakoscope)
 
 ## Architecture
 
@@ -178,5 +178,5 @@ If nakoscope is useful to you, consider donating to florentbr via their project 
 
 If you find this useful, please consider buying me a coffee:
 
-[![Donate with PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN)
+[![Donate with PayPal](https://www.paypalobjects.com/en_GB/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate?hosted_button_id=Q3BESC73EWVNN&custom=nakoscope)
 
