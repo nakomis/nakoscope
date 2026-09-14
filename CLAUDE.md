@@ -2,7 +2,7 @@
 
 Oscilloscope data capture, storage, and analysis tool. Records waveform data from a USB oscilloscope (OWON VDS1022/VDS1022i), stores captures in HDF5 format, and exposes them to Claude via an MCP server.
 
-Taiga project prefix: **SCOPE** (see project-prefixes note below)
+Plane project identifier: **SCOPE** (see project-prefixes note below)
 
 ## Architecture
 
@@ -56,12 +56,6 @@ Tests live in `tests/`. Run with `pytest`. The test suite covers the core librar
 
 ## Project management
 
-Taiga project prefix: **SCOPE** — story refs look like `SCOPE-1`, `SCOPE-2`, etc.
+Plane project identifier: **SCOPE** — story refs look like `SCOPE-1`, `SCOPE-2`, etc.
 
-Project prefixes are tracked in:
-`/Users/nakomis/repos/nakomis/home-servers/taiga/docs/project-prefixes.md`
-
-When adding a new Taiga project, pick an unused prefix, add it **alphabetically** to that file, then run:
-```
-~/scripts/md-to-pdf /Users/nakomis/repos/nakomis/home-servers/taiga/docs/project-prefixes.md
-```
+When adding a new Plane project, check `list_projects` (via the `plane` MCP) for an unused identifier, then create the project with the `plane` MCP's `create_project`.
