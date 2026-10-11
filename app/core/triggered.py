@@ -17,8 +17,17 @@ from typing import TypeVar
 from .device import CaptureFrame
 from .storage import StorageBackend
 
-SOURCES = ('CH1', 'CH2', 'EXT')
-EDGES   = ('rise', 'fall')
+SOURCES   = ('CH1', 'CH2', 'EXT')
+EDGES     = ('rise', 'fall')
+COUPLINGS = ('DC', 'AC')
+MIN_RATE, MAX_RATE = 2.5, 100e6
+
+# The scope's edge trigger has ~10 ADC counts (4 % of full scale) of
+# hysteresis and can't trigger at the very edge of the window.
+LEVEL_MARGIN = 0.05
+# A sample this close to the edge of the window (as a fraction of full
+# scale) is treated as clipped.
+CLIP_MARGIN = 0.01
 
 T = TypeVar('T')
 
@@ -28,7 +37,9 @@ class TriggerSettings:
     """Everything needed to arm one triggered capture.
 
     source:      'CH1', 'CH2' or 'EXT' (the scope's Multi port as trigger in).
-    level:       trigger level in volts (ignored for EXT, which is TTL).
+    level:       trigger level in volts at the probe tip. Must sit inside the
+                 visible window. Ignored for EXT, which is a TTL input
+                 (threshold ~2 V, so 1.5 V logic won't trip it).
     edge:        'rise' or 'fall'.
     position:    where the trigger sits in the frame, 0 (left) to 1 (right).
     sample_rate: Hz; snapped by the device to the nearest supported rate.
@@ -67,11 +78,38 @@ class TriggerSettings:
             raise ValueError(f'position must be between 0 and 1, got {self.position}')
         if not 0 <= self.offset <= 1:
             raise ValueError(f'offset must be between 0 and 1, got {self.offset}')
-        if self.sample_rate <= 0 or self.v_range <= 0 or self.timeout <= 0:
-            raise ValueError('sample_rate, v_range and timeout must be positive')
+        if self.coupling not in COUPLINGS:
+            raise ValueError(f'coupling must be one of {COUPLINGS}, got {self.coupling!r}')
+        if not MIN_RATE <= self.sample_rate <= MAX_RATE:
+            raise ValueError(f'sample_rate must be between {MIN_RATE} and {MAX_RATE:g} Hz')
+        if self.v_range <= 0 or self.timeout <= 0 or self.probe_attenuation < 1:
+            raise ValueError('v_range and timeout must be positive and probe at least 1')
+        if self.source != 'EXT':
+            lo, hi = window(self.v_range, self.offset)
+            margin = LEVEL_MARGIN * self.v_range
+            if not lo + margin <= self.level <= hi - margin:
+                raise ValueError(
+                    f'level {self.level} V is outside the visible window '
+                    f'{lo + margin:.3g}..{hi - margin:.3g} V (v_range={self.v_range}, '
+                    f'offset={self.offset}); widen v_range or move offset'
+                )
 
     def to_metadata(self) -> dict:
         return {'mode': 'triggered', **asdict(self)}
+
+
+def window(v_range: float, offset: float) -> tuple[float, float]:
+    """Lowest and highest voltage on screen for a full-scale range and offset."""
+    return -offset * v_range, (1 - offset) * v_range
+
+
+def is_clipped(samples, v_range: float, offset: float) -> bool:
+    """True if any sample sits at the edge of the window (ADC saturated)."""
+    if len(samples) == 0:
+        return False
+    lo, hi = window(v_range, offset)
+    margin = CLIP_MARGIN * v_range
+    return bool(min(samples) <= lo + margin or max(samples) >= hi - margin)
 
 
 def fetch_with_timeout(fetch: Callable[[], T], stop: Callable[[], object],

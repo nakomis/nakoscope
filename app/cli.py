@@ -127,7 +127,11 @@ def cmd_capture(args):
           f'rate={settings.sample_rate/1e6:g} MS/s  channels={settings.channels}  '
           f'timeout={settings.timeout:g}s')
 
-    session_id = run_triggered(VDS1022Device(), storage, settings, notes=args.notes)
+    try:
+        session_id = run_triggered(VDS1022Device(), storage, settings, notes=args.notes)
+    except ValueError as e:
+        print(f'Capture failed: {e}')
+        sys.exit(2)
     if session_id is None:
         print(f'No trigger within {settings.timeout:g}s — nothing saved.')
         sys.exit(1)

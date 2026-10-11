@@ -15,8 +15,11 @@ Tools:
   capture_triggered  — one-shot edge-triggered frame at up to 100 MS/s (blocking)
   arm_triggered      — the same, armed in the background (fire, then wait)
   wait_triggered     — wait for the armed capture's result
+  cancel_triggered   — abort the armed capture
 """
 
+import contextlib
+import os
 import sys
 import threading
 from pathlib import Path
@@ -48,6 +51,17 @@ def _storage() -> StorageBackend:
 
 _capture_lock = threading.Lock()
 _active: dict | None = None  # {'recorder', 'device', 'session_id'}
+
+
+@contextlib.contextmanager
+def _scope_or_busy():
+    """Hold _capture_lock for the block, failing fast if the scope is busy."""
+    if not _capture_lock.acquire(blocking=False):
+        raise RuntimeError('The scope is busy (a bounded recording or an armed triggered capture)')
+    try:
+        yield
+    finally:
+        _capture_lock.release()
 
 
 def _resolve_capture_args(
@@ -271,7 +285,7 @@ def start_recording(
     """
     capture = _resolve_capture_args(channels, sample_rate, v_range, coupling, probe)
 
-    with _capture_lock:
+    with _scope_or_busy():
         global _active
         if _active is not None:
             raise RuntimeError('A recording is already in progress')
@@ -288,7 +302,7 @@ def stop_recording() -> dict:
     Returns:
         Dict: { session_id, n_frames, n_samples, elapsed_s, running }
     """
-    with _capture_lock:
+    with _scope_or_busy():
         global _active
         if _active is None:
             raise RuntimeError('No recording is in progress')
@@ -302,17 +316,16 @@ def stop_recording() -> dict:
 
 # ── Triggered capture tools ───────────────────────────────────────────────────
 # A triggered capture holds _capture_lock from arming until the frame is stored
-# (or the trigger times out), so it can't collide with a recording.
+# (or the trigger times out), so it can't collide with a recording. Its result
+# waits in _armed until wait_triggered collects it.
 
-_armed: dict | None = None  # {'thread', 'done': Event, 'result', 'error'}
+_armed: dict | None = None  # {'thread', 'device', 'done': Event, 'result', 'error'}
 
 
-def _triggered_worker(settings, notes, slot):
-    from core.devices.vds1022 import VDS1022Device
-    from core.triggered import run_triggered
+def _triggered_worker(run_triggered, device, settings, notes, slot):
     try:
-        slot['result'] = run_triggered(VDS1022Device(), _storage(), settings, notes=notes)
-    except Exception as e:  # noqa: BLE001 — reported by wait_triggered
+        slot['result'] = run_triggered(device, _storage(), settings, notes=notes)
+    except BaseException as e:  # noqa: BLE001 — reported by wait_triggered
         slot['error'] = f'{type(e).__name__}: {e}'
     finally:
         _capture_lock.release()
@@ -320,17 +333,24 @@ def _triggered_worker(settings, notes, slot):
 
 
 def _triggered_result(slot) -> dict:
+    from core.triggered import is_clipped
+
     if slot['error']:
         raise RuntimeError(slot['error'])
     sid = slot['result']
     if sid is None:
         return {'status': 'timeout', 'session_id': None}
     session = _storage().get_session(sid)
-    levels = {}
-    for ch in session['channels']:
-        wf = _storage().get_waveform(sid, ch, max_points=10_000)
-        v = wf['samples']
-        levels[ch] = {'min': min(v), 'max': max(v), 'mean': sum(v) / len(v)}
+    offset  = session.get('metadata', {}).get('offset', 0.5)
+    levels  = {}
+    for ch, info in session['channels'].items():
+        v = _storage().get_waveform(sid, ch, max_points=10_000)['samples']
+        levels[ch] = {
+            'min':     min(v),
+            'max':     max(v),
+            'mean':    sum(v) / len(v),
+            'clipped': is_clipped(v, info['v_range'], offset),
+        }
     return {'status': 'captured', 'session_id': sid, 'levels': levels,
             'channels': session['channels']}
 
@@ -353,28 +373,34 @@ def arm_triggered(
     """Arm a one-shot edge trigger in the background and return immediately.
 
     Fire the event (e.g. run the firmware command) after this returns, then
-    call wait_triggered. One frame is ~5000 samples per channel, so the window
+    call wait_triggered (or cancel_triggered to give up early). One frame is ~5000 samples per channel, so the window
     is 5000 / sample_rate (50 µs at 100 MS/s). Stored time axes are
     trigger-relative: t = 0 is the trigger, negative times are pre-trigger.
 
     Args:
         trigger:     'CH1', 'CH2' or 'EXT' (Multi port as TTL trigger input).
-        level:       Trigger level in volts at the probe tip (ignored for EXT).
+        level:       Trigger level in volts at the probe tip; must be inside the
+                     visible window, with ~4 % of full scale hysteresis.
+                     Ignored for EXT (TTL, ~2 V threshold).
         edge:        'rise' or 'fall'.
         position:    Trigger position in the frame, 0 (left) to 1 (right).
         sample_rate: Hz, snapped to the scope's rates (max 100e6).
         channels:    Channels to record (default ['CH1', 'CH2']).
         v_range:     Full-scale volts across 10 divs at the probe tip.
-        offset:      Where 0 V sits on screen, 0 (bottom) to 1 (top).
+        offset:      Where 0 V sits on screen, 0 (bottom) to 1 (top). For 0-1.5 V
+                     logic use v_range=2.5, offset=0.2 (-0.5..2 V).
         coupling:    'DC' or 'AC'.
-        probe:       Probe attenuation (1 for x1, 10 for x10).
+        probe:       Probe attenuation (1 for x1, 10 for x10). Prefer x10 on
+                     fast or weakly driven lines; x1 loads them heavily.
         timeout:     Seconds to wait for the trigger, at most 600.
         notes:       Free-text notes for the session.
 
     Returns:
         Dict: { armed: True, settings }
     """
-    from core.triggered import TriggerSettings
+    # Import before taking the lock, so a broken install fails here.
+    from core.devices.vds1022 import VDS1022Device
+    from core.triggered import TriggerSettings, run_triggered
 
     if timeout > 600:
         raise ValueError('timeout must be at most 600 seconds')
@@ -387,13 +413,25 @@ def arm_triggered(
 
     global _armed
     if not _capture_lock.acquire(blocking=False):
-        raise RuntimeError('The scope is busy (recording or already armed)')
-    slot = {'done': threading.Event(), 'result': None, 'error': None}
-    slot['thread'] = threading.Thread(
-        target=_triggered_worker, args=(settings, notes, slot), daemon=True,
-    )
-    _armed = slot
-    slot['thread'].start()
+        raise RuntimeError('The scope is busy (a bounded recording or an armed triggered capture)')
+    try:
+        if _active is not None:
+            raise RuntimeError('A recording is in progress — stop_recording first')
+        if _armed is not None:
+            raise RuntimeError('The previous triggered capture has not been collected — '
+                               'call wait_triggered first')
+        device = VDS1022Device()
+        slot = {'done': threading.Event(), 'result': None, 'error': None, 'device': device}
+        slot['thread'] = threading.Thread(
+            target=_triggered_worker,
+            args=(run_triggered, device, settings, notes, slot),
+            daemon=True,
+        )
+        slot['thread'].start()  # the worker releases the lock when it finishes
+        _armed = slot
+    except BaseException:
+        _capture_lock.release()
+        raise
     return {'armed': True, 'settings': settings.to_metadata()}
 
 
@@ -406,7 +444,8 @@ def wait_triggered(wait_s: float = 60.0) -> dict:
 
     Returns:
         Dict: { status: 'captured' | 'timeout' | 'waiting', session_id,
-                levels: { ch1: {min, max, mean}, ... }, channels }
+                levels: { ch1: {min, max, mean, clipped}, ... }, channels }
+        clipped means the signal ran off the screen: widen v_range or move offset.
         Read the samples with get_waveform(session_id, 'ch1', ...).
     """
     global _armed
@@ -441,11 +480,27 @@ def capture_triggered(
     Arguments are as for arm_triggered.
 
     Returns:
-        Dict as for wait_triggered ('captured' or 'timeout').
+        Dict as for wait_triggered: 'captured' or 'timeout', or 'waiting' if
+        connecting/saving overran — then call wait_triggered again.
     """
     arm_triggered(trigger, level, edge, position, sample_rate, channels,
                   v_range, offset, coupling, probe, timeout, notes)
-    return wait_triggered(timeout + 30)
+    return wait_triggered(min(timeout + 120, 600))
+
+
+@mcp.tool()
+def cancel_triggered() -> dict:
+    """Abort the armed triggered capture without waiting for its timeout.
+
+    Returns:
+        Dict as for wait_triggered (normally 'timeout', meaning nothing saved).
+    """
+    slot = _armed
+    if slot is None:
+        raise RuntimeError('Nothing is armed')
+    if not slot['done'].is_set():
+        slot['device'].abort()
+    return wait_triggered(30)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

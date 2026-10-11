@@ -211,8 +211,8 @@ def _session_detail(sid, attrs, channels) -> dict:
 
 
 def _time_slice(n_total, sample_rate, start_s, end_s):
-    i0 = int(start_s * sample_rate) if start_s is not None else 0
-    i1 = int(end_s   * sample_rate) if end_s   is not None else n_total
+    i0 = round(start_s * sample_rate) if start_s is not None else 0
+    i1 = round(end_s   * sample_rate) if end_s   is not None else n_total
     return max(0, min(i0, n_total)), max(0, min(i1, n_total))
 
 

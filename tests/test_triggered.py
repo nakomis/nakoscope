@@ -8,6 +8,7 @@ from app.core.device import CaptureFrame, ChannelData
 from app.core.triggered import (
     TriggerSettings,
     fetch_with_timeout,
+    is_clipped,
     run_triggered,
     save_capture,
 )
@@ -33,10 +34,22 @@ class TestTriggerSettings:
         dict(timeout=0),
         dict(sample_rate=-1),
         dict(source='CH2', channels=['CH1']),
+        dict(coupling='GND'),
+        dict(sample_rate=200e6),
+        dict(probe_attenuation=0.5),
+        dict(level=2.5, v_range=5.0, offset=0.5),   # top edge of the window
+        dict(level=1.5, v_range=2.0, offset=0.5),   # above +1 V
+        dict(level=-0.5, v_range=2.5, offset=0.1),  # below -0.25 V
     ])
     def test_rejects_bad_settings(self, kwargs):
         with pytest.raises(ValueError):
             TriggerSettings(**kwargs)
+
+    def test_ddr_levels_fit_a_low_offset_window(self):
+        TriggerSettings(level=0.75, v_range=2.5, offset=0.2)
+
+    def test_ext_ignores_level_window(self):
+        TriggerSettings(source='EXT', level=99.0)
 
     def test_ext_source_needs_no_matching_channel(self):
         TriggerSettings(source='EXT', channels=['CH1'])
@@ -165,3 +178,18 @@ class TestRunTriggered:
         with pytest.raises(RuntimeError):
             run_triggered(scope, backend, TriggerSettings())
         assert scope.calls[-1] == 'disconnect'
+
+
+class TestIsClipped:
+    def test_signal_inside_window(self):
+        assert not is_clipped(np.array([0.0, 1.5]), v_range=2.5, offset=0.2)
+
+    def test_flat_top_at_window_edge(self):
+        # v_range 2 at offset 0.5 shows -1..+1 V; a 1.5 V signal reads as 1.0
+        assert is_clipped(np.array([0.0, 1.0, 1.0]), v_range=2.0, offset=0.5)
+
+    def test_bottom_edge(self):
+        assert is_clipped(np.array([-0.5, 0.3]), v_range=2.5, offset=0.2)
+
+    def test_empty(self):
+        assert not is_clipped(np.array([]), v_range=2.0, offset=0.5)

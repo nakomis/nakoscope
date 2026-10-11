@@ -15,6 +15,7 @@ Install with:
 Requires root/sudo on macOS (libusb IOKit access).
 """
 
+import contextlib
 import json
 import os
 import struct
@@ -93,7 +94,20 @@ class VDS1022Device(CaptureDevice):
                 self._dev.stop()
             except Exception:  # noqa: BLE001, S110 - best-effort stop; disconnect must not fail
                 pass
+            # Release the USB interface so another process (or the Rust
+            # binary) can open the scope; florentbr's VDS1022 is a singleton
+            # that otherwise keeps it claimed for the life of the process.
+            try:
+                self._dev.dispose()
+            except Exception:
+                pass
             self._dev = None
+
+    def abort(self) -> None:
+        """Stop an in-progress capture from another thread."""
+        dev = self._dev
+        if dev is not None:
+            dev.stop()
 
     def info(self) -> DeviceInfo:
         if self._dev is None:
@@ -179,8 +193,15 @@ class VDS1022Device(CaptureDevice):
         """
         if self._dev is None:
             raise RuntimeError('Not connected — call connect() first.')
-        dev = self._dev
+        # florentbr prints notices (e.g. range snapping) to stdout, which
+        # would corrupt the MCP stdio stream; its assertions are bad settings.
+        try:
+            with contextlib.redirect_stdout(sys.stderr):
+                return self._capture_triggered(self._dev, settings)
+        except AssertionError as e:
+            raise ValueError(f'Scope rejected the settings: {e}') from e
 
+    def _capture_triggered(self, dev, settings: TriggerSettings) -> CaptureFrame | None:
         for ch_name, ch_const in _CHANNEL_MAP.items():
             if ch_name in settings.channels:
                 dev.set_channel(
@@ -219,6 +240,9 @@ class VDS1022Device(CaptureDevice):
                 v_range     = dev.voltrange[f.channel] * dev.probe[f.channel],
                 time_offset = float(f.tx),
             )
+        # A stop racing a transfer makes florentbr yield an all-None Frames.
+        if not channels:
+            return None
         return CaptureFrame(clock=frames.clock, channels=channels)
 
     # ── Rust capture path ─────────────────────────────────────────────────────
