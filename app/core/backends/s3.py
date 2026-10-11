@@ -63,7 +63,7 @@ class S3Backend(StorageBackend):
 
     # ── Write ──────────────────────────────────────────────────────────────────
 
-    def start_session(self, notes='', device_name='', device_serial='') -> str:
+    def start_session(self, notes='', device_name='', device_serial='', metadata=None) -> str:
         session_id = _new_session_id()
 
         # Delegate to a local HDF5 backend for the in-progress capture.
@@ -71,14 +71,16 @@ class S3Backend(StorageBackend):
         local = self._local_backend(session_id)
         local.start_session(
             notes=notes, device_name=device_name, device_serial=device_serial,
-            session_id=session_id,
+            session_id=session_id, metadata=metadata,
         )
 
         return session_id
 
-    def append_frame(self, session_id, channel_name, samples, sample_rate, v_range):
+    def append_frame(self, session_id, channel_name, samples, sample_rate, v_range,
+                     time_offset=0.0):
         self._local_backend(session_id).append_frame(
             session_id, channel_name, samples, sample_rate, v_range,
+            time_offset=time_offset,
         )
 
     def end_session(self, session_id, n_frames):

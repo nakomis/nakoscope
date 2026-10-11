@@ -127,6 +127,11 @@ nakoscope record --notes "testing RC filter at 1kHz"
 # Override capture settings for this run
 nakoscope record --channels CH1 --sample-rate 500000 --v-range 5.0
 
+# One-shot triggered capture: arm, wait for one edge, store a single
+# full-rate frame (~5000 samples per channel; 50 µs at 100 MS/s)
+nakoscope capture --trigger EXT --edge rise --position 0.2 \
+    --sample-rate 100e6 --v-range 2 --offset 0.1 --timeout 10 --notes "READ burst"
+
 # List recent sessions
 nakoscope list
 nakoscope list --limit 50 --search "RC filter"
@@ -148,7 +153,17 @@ Once installed, Claude can query your oscilloscope data directly:
 > "Show me the waveform from session 20240402-143021"  
 > "What's the peak voltage in channel 1 of that last recording?"
 
-The MCP server exposes three tools: `list_sessions`, `get_session_info`, `get_waveform`.
+The MCP server exposes:
+
+- **Reading:** `list_sessions`, `get_session_info`, `get_waveform`
+- **Roll-mode recording:** `record_for`, `start_recording`, `stop_recording`
+- **Triggered capture:** `capture_triggered` (blocks until the trigger fires), or `arm_triggered` then `wait_triggered` when something has to be fired after arming
+
+### Triggered capture
+
+Roll mode streams continuously at up to ~1.25 MS/s. Triggered capture instead arms an edge trigger and fetches one frame of ~5000 samples per channel at up to 100 MS/s — for looking at MHz activity around a single event. The trigger source can be `CH1`, `CH2` or `EXT` (the Multi port as a TTL trigger input), so a firmware "marker" GPIO can trigger the scope while both channels watch the signals of interest.
+
+Triggered sessions store their trigger settings under `metadata` (`mode: triggered`), and their time axes are trigger-relative: t = 0 is the trigger and negative times are pre-trigger. `--v-range` is full-scale at the probe tip, and `--offset` sets where 0 V sits on screen (0 = bottom), e.g. `--v-range 2 --offset 0.1` shows −0.2 V to 1.8 V for 1.5 V logic.
 
 ## Adding a new oscilloscope
 

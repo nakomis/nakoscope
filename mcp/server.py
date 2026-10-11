@@ -12,6 +12,9 @@ Tools:
   record_for         — run a bounded recording for N seconds and return stats
   start_recording    — open the device and begin a recording (returns session_id)
   stop_recording     — stop the in-flight recording started by start_recording
+  capture_triggered  — one-shot edge-triggered frame at up to 100 MS/s (blocking)
+  arm_triggered      — the same, armed in the background (fire, then wait)
+  wait_triggered     — wait for the armed capture's result
 """
 
 import sys
@@ -152,36 +155,40 @@ def get_waveform(
     session_id: str,
     channel: str = 'ch1',
     max_points: int = 5000,
-    start_s: float = 0.0,
-    end_s: float = 0.0,
+    start_s: float | None = None,
+    end_s: float | None = None,
 ) -> dict:
     """Get waveform data for a channel from a recording session.
 
     Large captures are automatically downsampled to max_points for context
-    efficiency. Set start_s/end_s to slice a time window (0.0 = full range).
+    efficiency. Set start_s/end_s to slice a time window (omit for the full range).
 
     Args:
         session_id: The session identifier.
         channel:    Channel name: 'ch1' or 'ch2' (case-insensitive).
         max_points: Maximum number of voltage samples to return (default 5000).
-        start_s:    Start of time window in seconds from session start (0 = beginning).
-        end_s:      End of time window in seconds from session start (0 = end).
+        start_s:    Start of the window in seconds (omit = beginning). Seconds from
+                    session start, or from the trigger for triggered captures
+                    (negative = pre-trigger).
+        end_s:      End of the window in seconds (omit = end), same time base.
 
     Returns:
         Dict with keys:
           samples      — list of float voltages (Volts)
-          time_axis    — list of float timestamps (seconds from session start)
+          time_axis    — list of float timestamps (seconds from session start;
+                         for triggered captures, seconds from the trigger)
           sample_rate  — original sample rate in Hz
           v_range      — full-scale voltage range (10 divs, Volts)
           downsampled  — True if data was decimated to fit max_points
           original_n   — number of samples in the requested window before decimation
+          time_offset  — time of the first stored sample (negative = pre-trigger)
     """
     result = _storage().get_waveform(
         session_id = session_id,
         channel    = channel,
         max_points = max_points,
-        start_s    = start_s if start_s > 0 else None,
-        end_s      = end_s   if end_s   > 0 else None,
+        start_s    = start_s,
+        end_s      = end_s,
     )
     if result is None:
         raise ValueError(f'Channel {channel!r} not found in session {session_id!r}')
@@ -291,6 +298,154 @@ def stop_recording() -> dict:
         _active = None
 
     return _close_recorder(recorder, device)
+
+
+# ── Triggered capture tools ───────────────────────────────────────────────────
+# A triggered capture holds _capture_lock from arming until the frame is stored
+# (or the trigger times out), so it can't collide with a recording.
+
+_armed: dict | None = None  # {'thread', 'done': Event, 'result', 'error'}
+
+
+def _triggered_worker(settings, notes, slot):
+    from core.devices.vds1022 import VDS1022Device
+    from core.triggered import run_triggered
+    try:
+        slot['result'] = run_triggered(VDS1022Device(), _storage(), settings, notes=notes)
+    except Exception as e:  # noqa: BLE001 — reported by wait_triggered
+        slot['error'] = f'{type(e).__name__}: {e}'
+    finally:
+        _capture_lock.release()
+        slot['done'].set()
+
+
+def _triggered_result(slot) -> dict:
+    if slot['error']:
+        raise RuntimeError(slot['error'])
+    sid = slot['result']
+    if sid is None:
+        return {'status': 'timeout', 'session_id': None}
+    session = _storage().get_session(sid)
+    levels = {}
+    for ch in session['channels']:
+        wf = _storage().get_waveform(sid, ch, max_points=10_000)
+        v = wf['samples']
+        levels[ch] = {'min': min(v), 'max': max(v), 'mean': sum(v) / len(v)}
+    return {'status': 'captured', 'session_id': sid, 'levels': levels,
+            'channels': session['channels']}
+
+
+@mcp.tool()
+def arm_triggered(
+    trigger: str = 'CH1',
+    level: float = 0.0,
+    edge: str = 'rise',
+    position: float = 0.5,
+    sample_rate: float = 100e6,
+    channels: list[str] | None = None,
+    v_range: float = 5.0,
+    offset: float = 0.5,
+    coupling: str = 'DC',
+    probe: float = 1.0,
+    timeout: float = 30.0,
+    notes: str = '',
+) -> dict:
+    """Arm a one-shot edge trigger in the background and return immediately.
+
+    Fire the event (e.g. run the firmware command) after this returns, then
+    call wait_triggered. One frame is ~5000 samples per channel, so the window
+    is 5000 / sample_rate (50 µs at 100 MS/s). Stored time axes are
+    trigger-relative: t = 0 is the trigger, negative times are pre-trigger.
+
+    Args:
+        trigger:     'CH1', 'CH2' or 'EXT' (Multi port as TTL trigger input).
+        level:       Trigger level in volts at the probe tip (ignored for EXT).
+        edge:        'rise' or 'fall'.
+        position:    Trigger position in the frame, 0 (left) to 1 (right).
+        sample_rate: Hz, snapped to the scope's rates (max 100e6).
+        channels:    Channels to record (default ['CH1', 'CH2']).
+        v_range:     Full-scale volts across 10 divs at the probe tip.
+        offset:      Where 0 V sits on screen, 0 (bottom) to 1 (top).
+        coupling:    'DC' or 'AC'.
+        probe:       Probe attenuation (1 for x1, 10 for x10).
+        timeout:     Seconds to wait for the trigger, at most 600.
+        notes:       Free-text notes for the session.
+
+    Returns:
+        Dict: { armed: True, settings }
+    """
+    from core.triggered import TriggerSettings
+
+    if timeout > 600:
+        raise ValueError('timeout must be at most 600 seconds')
+    settings = TriggerSettings(
+        source=trigger, level=level, edge=edge, position=position,
+        sample_rate=sample_rate, channels=channels or ['CH1', 'CH2'],
+        v_range=v_range, offset=offset, coupling=coupling,
+        probe_attenuation=probe, timeout=timeout,
+    )
+
+    global _armed
+    if not _capture_lock.acquire(blocking=False):
+        raise RuntimeError('The scope is busy (recording or already armed)')
+    slot = {'done': threading.Event(), 'result': None, 'error': None}
+    slot['thread'] = threading.Thread(
+        target=_triggered_worker, args=(settings, notes, slot), daemon=True,
+    )
+    _armed = slot
+    slot['thread'].start()
+    return {'armed': True, 'settings': settings.to_metadata()}
+
+
+@mcp.tool()
+def wait_triggered(wait_s: float = 60.0) -> dict:
+    """Wait for the capture started by arm_triggered.
+
+    Args:
+        wait_s: How long to block here before reporting 'waiting' (max 600).
+
+    Returns:
+        Dict: { status: 'captured' | 'timeout' | 'waiting', session_id,
+                levels: { ch1: {min, max, mean}, ... }, channels }
+        Read the samples with get_waveform(session_id, 'ch1', ...).
+    """
+    global _armed
+    slot = _armed
+    if slot is None:
+        raise RuntimeError('Nothing is armed — call arm_triggered first')
+    if not slot['done'].wait(min(max(wait_s, 0.0), 600.0)):
+        return {'status': 'waiting', 'session_id': None}
+    _armed = None
+    return _triggered_result(slot)
+
+
+@mcp.tool()
+def capture_triggered(
+    trigger: str = 'CH1',
+    level: float = 0.0,
+    edge: str = 'rise',
+    position: float = 0.5,
+    sample_rate: float = 100e6,
+    channels: list[str] | None = None,
+    v_range: float = 5.0,
+    offset: float = 0.5,
+    coupling: str = 'DC',
+    probe: float = 1.0,
+    timeout: float = 10.0,
+    notes: str = '',
+) -> dict:
+    """Arm a one-shot edge trigger and block until it fires or times out.
+
+    For repetitive signals that will trigger on their own. When something has
+    to be fired after arming, use arm_triggered + wait_triggered instead.
+    Arguments are as for arm_triggered.
+
+    Returns:
+        Dict as for wait_triggered ('captured' or 'timeout').
+    """
+    arm_triggered(trigger, level, edge, position, sample_rate, channels,
+                  v_range, offset, coupling, probe, timeout, notes)
+    return wait_triggered(timeout + 30)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

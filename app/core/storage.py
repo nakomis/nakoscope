@@ -37,8 +37,13 @@ class StorageBackend(ABC):
         notes: str = '',
         device_name: str = '',
         device_serial: str = '',
+        metadata: dict | None = None,
     ) -> str:
-        """Create a new session and return its session_id."""
+        """Create a new session and return its session_id.
+
+        metadata is an optional JSON-serialisable dict stored with the session
+        (e.g. trigger settings) and returned by get_session/list_sessions.
+        """
 
     @abstractmethod
     def append_frame(
@@ -48,8 +53,14 @@ class StorageBackend(ABC):
         samples,           # numpy float32 array
         sample_rate: float,
         v_range: float,
+        time_offset: float = 0.0,
     ) -> None:
-        """Append samples for one channel to an open session."""
+        """Append samples for one channel to an open session.
+
+        time_offset is the time of the channel's first sample relative to
+        t = 0 (the trigger, for triggered captures); it is fixed by the first
+        append for each channel.
+        """
 
     @abstractmethod
     def end_session(self, session_id: str, n_frames: int) -> None:

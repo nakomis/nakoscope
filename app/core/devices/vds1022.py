@@ -27,6 +27,7 @@ from pathlib import Path
 import numpy as np
 
 from ..device import CaptureDevice, CaptureFrame, ChannelData, DeviceInfo
+from ..triggered import TriggerSettings, fetch_with_timeout
 
 # ── Locate the florentbr API ──────────────────────────────────────────────────
 
@@ -49,6 +50,8 @@ from vds1022 import vds1022 as _vds
 
 _CHANNEL_MAP = {'CH1': _vds.CH1, 'CH2': _vds.CH2}
 _COUPLING_MAP = {'DC': _vds.DC, 'AC': _vds.AC}
+_SOURCE_MAP   = {'CH1': _vds.CH1, 'CH2': _vds.CH2, 'EXT': _vds.EXT}
+_EDGE_MAP     = {'rise': _vds.RISE, 'fall': _vds.FALL}
 
 # ── Rust binary location ───────────────────────────────────────────────────────
 # install.sh copies the binary to /usr/local/lib/nakoscope/bin/ (root-owned).
@@ -162,6 +165,61 @@ class VDS1022Device(CaptureDevice):
                 file=sys.stderr,
             )
             yield from self._frames_python()
+
+    # ── Triggered one-shot capture ────────────────────────────────────────────
+
+    def capture_triggered(self, settings: TriggerSettings) -> CaptureFrame | None:
+        """Arm a single-shot edge trigger and fetch one frame (~5000 samples
+        per channel, up to 100 MS/s) through the florentbr API.
+
+        Returns None if nothing triggered within settings.timeout. Each
+        channel's time_offset is the time of its first sample relative to the
+        trigger, so t = 0 is the trigger. Does not use configure(): ranges here
+        are full-scale at the probe tip, as florentbr's set_channel expects.
+        """
+        if self._dev is None:
+            raise RuntimeError('Not connected — call connect() first.')
+        dev = self._dev
+
+        for ch_name, ch_const in _CHANNEL_MAP.items():
+            if ch_name in settings.channels:
+                dev.set_channel(
+                    ch_const,
+                    range    = settings.v_range,
+                    offset   = settings.offset,
+                    probe    = settings.probe_attenuation,
+                    coupling = _COUPLING_MAP.get(settings.coupling, _vds.DC),
+                )
+            else:
+                dev.on[ch_const] = False
+
+        rate = min(_vds.SAMPLING_RATES, key=lambda r: abs(r - settings.sample_rate))
+        dev.set_sampling(rate, roll=False)
+        dev.set_trigger(
+            _SOURCE_MAP[settings.source],
+            _vds.EDGE,
+            _EDGE_MAP[settings.edge],
+            position = settings.position,
+            level    = settings.level,
+            sweep    = _vds.ONCE,
+        )
+
+        frames = fetch_with_timeout(dev.fetch, dev.stop, settings.timeout)
+        if frames is None:
+            return None
+
+        channels = {}
+        for f in frames:
+            if f is None:
+                continue
+            channels[f.name] = ChannelData(
+                name        = f.name,
+                samples     = np.asarray(f.y(), dtype=np.float32),
+                sample_rate = dev.sampling_rate,
+                v_range     = dev.voltrange[f.channel] * dev.probe[f.channel],
+                time_offset = float(f.tx),
+            )
+        return CaptureFrame(clock=frames.clock, channels=channels)
 
     # ── Rust capture path ─────────────────────────────────────────────────────
 
