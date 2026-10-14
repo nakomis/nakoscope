@@ -22,17 +22,12 @@ Dependencies: boto3 (pip install boto3)
 
 import json
 import shutil
-import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
-
-import numpy as np
 
 from ..storage import StorageBackend
 from .hdf5 import (
-    LocalHDF5Backend, _new_session_id, _session_summary, _session_detail,
-    _time_slice, _downsample,
+    LocalHDF5Backend,
+    _new_session_id,
 )
 
 try:
@@ -43,8 +38,6 @@ except ImportError as e:
         'boto3 is required for the S3 backend. Install it with:\n'
         '  pip install boto3'
     ) from e
-
-import h5py
 
 
 class S3Backend(StorageBackend):
@@ -59,7 +52,7 @@ class S3Backend(StorageBackend):
         bucket: str,
         prefix: str = 'nakoscope/',
         cache_dir=None,
-        aws_profile: Optional[str] = None,
+        aws_profile: str | None = None,
     ):
         self.bucket = bucket
         self.prefix = prefix.rstrip('/') + '/'
@@ -124,7 +117,7 @@ class S3Backend(StorageBackend):
                 try:
                     body = self._s3.get_object(Bucket=self.bucket, Key=key)['Body'].read()
                     meta = json.loads(body)
-                except Exception:
+                except Exception:  # noqa: BLE001, S112 - skip unreadable meta.json (S3, network or JSON errors)
                     continue
 
                 if since and meta.get('started_at', '') < since:
@@ -136,7 +129,7 @@ class S3Backend(StorageBackend):
         sessions.sort(key=lambda s: s.get('started_at', ''), reverse=True)
         return sessions[:limit]
 
-    def get_session(self, session_id) -> Optional[dict]:
+    def get_session(self, session_id) -> dict | None:
         meta_key = self._meta_key(session_id)
         try:
             body = self._s3.get_object(Bucket=self.bucket, Key=meta_key)['Body'].read()
@@ -147,7 +140,7 @@ class S3Backend(StorageBackend):
             raise
 
     def get_waveform(self, session_id, channel, max_points=5000,
-                     start_s=None, end_s=None) -> Optional[dict]:
+                     start_s=None, end_s=None) -> dict | None:
         local_h5 = self._ensure_cached(session_id)
         if local_h5 is None:
             return None
@@ -169,7 +162,7 @@ class S3Backend(StorageBackend):
     def _meta_key(self, session_id: str) -> str:
         return f'{self.prefix}sessions/{session_id}/meta.json'
 
-    def _ensure_cached(self, session_id: str) -> Optional[Path]:
+    def _ensure_cached(self, session_id: str) -> Path | None:
         """Return the local HDF5 path, downloading from S3 if necessary."""
         local = self._local_h5_path(session_id)
         if local.exists():
@@ -183,7 +176,7 @@ class S3Backend(StorageBackend):
                 return None
             raise
 
-    def clear_cache(self, session_id: Optional[str] = None) -> None:
+    def clear_cache(self, session_id: str | None = None) -> None:
         """Delete cached local HDF5 files to free disk space.
 
         Args:

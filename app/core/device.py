@@ -1,8 +1,9 @@
 """Abstract base class for nakoscope capture devices."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Iterator
+from collections.abc import Iterator
+from dataclasses import dataclass
+
 import numpy as np
 
 

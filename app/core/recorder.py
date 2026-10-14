@@ -2,8 +2,8 @@
 
 import threading
 import time
-from dataclasses import dataclass, field
-from typing import Optional, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from .device import CaptureDevice
 from .storage import StorageBackend
@@ -30,7 +30,7 @@ class Recorder:
     """
 
     def __init__(self, device: CaptureDevice, storage: StorageBackend,
-                 on_frame: Optional[Callable[[RecorderStats], None]] = None):
+                 on_frame: Callable[[RecorderStats], None] | None = None):
         """
         Args:
             device:     Connected, configured CaptureDevice.
@@ -41,13 +41,13 @@ class Recorder:
         self._device    = device
         self._storage   = storage
         self._on_frame  = on_frame
-        self._thread:   Optional[threading.Thread] = None
+        self._thread:   threading.Thread | None = None
         self._stop_evt  = threading.Event()
-        self._stats:    Optional[RecorderStats] = None
+        self._stats:    RecorderStats | None = None
         self._lock      = threading.Lock()
 
     @property
-    def stats(self) -> Optional[RecorderStats]:
+    def stats(self) -> RecorderStats | None:
         with self._lock:
             return self._stats
 

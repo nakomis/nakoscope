@@ -10,7 +10,6 @@ Tools:
   get_waveform       — voltage samples for a channel (downsampled if large)
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from mcp.server.fastmcp import FastMCP
 _repo_root = Path(__file__).parent.parent
 sys.path.insert(0, str(_repo_root / 'app'))
 
-from core.storage import create_backend, StorageBackend
+from core.storage import StorageBackend, create_backend
 
 mcp = FastMCP('nakoscope')
 

@@ -30,9 +30,8 @@ capture:
   probe: 1.0
 """
 
-import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 CONFIG_PATH = Path.home() / '.nakoscope.yaml'
 
@@ -57,7 +56,7 @@ _DEFAULTS: dict = {
     },
 }
 
-_cache: Optional[dict] = None
+_cache: dict | None = None
 
 
 def load(reload: bool = False) -> dict:
