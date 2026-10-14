@@ -67,6 +67,33 @@ echo "  Done."
 
 # ── 3b. Install Rust capture binary ───────────────────────────────────────────
 RUST_SRC="$REPO/capture/target/release/nakoscope-capture"
+if [ ! -f "$RUST_SRC" ]; then
+    # Resolve cargo as the real user — check ~/.cargo/bin (rustup) and the asdf
+    # shims explicitly as su - may not load them
+    CARGO=$(su - "$REAL_USER" -c '
+        if command -v cargo &>/dev/null; then
+            command -v cargo
+        elif [ -x "$HOME/.cargo/bin/cargo" ]; then
+            echo "$HOME/.cargo/bin/cargo"
+        elif [ -x "$HOME/.asdf/shims/cargo" ]; then
+            echo "$HOME/.asdf/shims/cargo"
+        fi
+    ')
+    if [ -n "$CARGO" ]; then
+        # Build as the real user so target/ is not littered with root-owned files
+        echo "Building Rust capture binary (as $REAL_USER, using $CARGO)..."
+        if ! su - "$REAL_USER" -c "cd \"$REPO/capture\" && \"$CARGO\" build --release"; then
+            echo "Error: cargo build --release failed in $REPO/capture." >&2
+            echo "  Fix the build error above, then re-run: sudo bash $REPO/install.sh" >&2
+            echo "  (If $REPO/capture/target is owned by root from an earlier build, remove it first.)" >&2
+            exit 1
+        fi
+        if [ ! -f "$RUST_SRC" ]; then
+            echo "Error: cargo build succeeded but $RUST_SRC was not produced." >&2
+            exit 1
+        fi
+    fi
+fi
 if [ -f "$RUST_SRC" ]; then
     echo "Installing Rust capture binary..."
     mkdir -p "$INSTALL_DIR/bin"
@@ -75,9 +102,10 @@ if [ -f "$RUST_SRC" ]; then
     chmod 755 "$CAPTURE_BIN"
     echo "  Installed: $CAPTURE_BIN"
 else
-    echo "  WARNING: Rust binary not built — falling back to Python API (max ~400 KS/s)."
-    echo "  Build it with: cd $REPO/capture && cargo build --release"
-    echo "  Then re-run: sudo bash $REPO/install.sh"
+    echo "  WARNING: Rust binary not built and cargo not found — falling back to Python API (max ~400 KS/s)."
+    echo "  Install Rust (as $REAL_USER, not root) with rustup:"
+    echo "    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo "  Then re-run: sudo bash $REPO/install.sh  (it will build the binary for you)"
 fi
 
 # ── 4. Install Python dependencies (as the real user) ─────────────────────────

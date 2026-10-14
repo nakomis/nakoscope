@@ -36,6 +36,7 @@ If you find this useful, please consider buying me a coffee:
 - Python 3.11+ managed via [asdf](https://asdf-vm.com/)
 - [OWON VDS1022 Python API](https://github.com/florentbr/OWON-VDS1022)
 - For S3 backend: `boto3` and an AWS account
+- Optional but recommended: a Rust toolchain via [rustup](https://rustup.rs/), installed as your normal user — `install.sh` uses it to build the high-speed capture binary
 
 `libusb` is installed automatically by `install.sh` via Homebrew.
 
@@ -47,6 +48,7 @@ sudo bash install.sh
 
 The installer:
 1. Copies app files to `/usr/local/lib/nakoscope/` (root-owned — not user-editable)
+1. Builds the Rust capture binary with `cargo build --release` (as you, not root) if it is missing and cargo is available, then installs it
 2. Creates `/usr/local/bin/nakoscope` wrapper (root-owned)
 3. Writes `/etc/sudoers.d/nakoscope` — NOPASSWD grant for the wrapper only
 4. Creates `/var/log/nakoscope/`
