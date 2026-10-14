@@ -55,6 +55,14 @@ class StorageBackend(ABC):
     def end_session(self, session_id: str, n_frames: int) -> None:
         """Finalise a session. Implementations may flush/upload here."""
 
+    @abstractmethod
+    def set_notes(self, session_id: str, notes: str) -> str:
+        """Replace a recorded session's notes and return the previous notes.
+
+        Every other field is left untouched. Raises KeyError if the session
+        does not exist.
+        """
+
     # ── Read API (called by MCP server and CLI) ───────────────────────────────
 
     @abstractmethod

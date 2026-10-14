@@ -101,6 +101,25 @@ class S3Backend(StorageBackend):
             ContentType = 'application/json',
         )
 
+    def set_notes(self, session_id, notes):
+        """Rewrite notes in meta.json only; data.h5 is never touched.
+
+        Listing and session info are served from meta.json, so that is the
+        authoritative copy of the notes once a session has been uploaded.
+        """
+        meta = self.get_session(session_id)
+        if meta is None:
+            raise KeyError(session_id)
+        old = meta.get('notes', '')
+        meta['notes'] = notes
+        self._s3.put_object(
+            Bucket      = self.bucket,
+            Key         = self._meta_key(session_id),
+            Body        = json.dumps(meta).encode(),
+            ContentType = 'application/json',
+        )
+        return old
+
     # ── Read ───────────────────────────────────────────────────────────────────
 
     def list_sessions(self, limit=20, since=None, search=None) -> list[dict]:

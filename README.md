@@ -23,7 +23,7 @@ If you find this useful, please consider buying me a coffee:
                                            └────────────────────┘
 ```
 
-- **`app/`** — Python library and CLI (`nakoscope record|list|info`)
+- **`app/`** — Python library and CLI (`nakoscope record|list|info|retag`)
 - **`app/core/device.py`** — Abstract `CaptureDevice` base class; add new oscilloscope plugins here
 - **`app/core/backends/`** — `hdf5.py` (local file) and `s3.py` (AWS S3)
 - **`app/core/recorder.py`** — Threaded capture loop
@@ -133,7 +133,12 @@ nakoscope list --limit 50 --search "RC filter"
 
 # Show details for a session
 nakoscope info 20240402-143021-abc123
+
+# Change a session's notes after recording (prints the old and new notes)
+nakoscope retag 20240402-143021-abc123 "RC filter at 1kHz, 10k/100n"
 ```
+
+`retag` rewrites the notes in whichever backend holds the session. On S3 only the session's `meta.json` is rewritten; the waveform data is never touched. `list`, `info` and the MCP server's `list_sessions` all show the new notes straight away.
 
 ## MCP integration
 
