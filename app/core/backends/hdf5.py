@@ -9,10 +9,9 @@ All sessions are stored as groups within a single HDF5 file:
       /ch2    float32 dataset (resizable, chunked, gzip-compressed)
 """
 
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
 import uuid
+from datetime import UTC, datetime
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -37,7 +36,7 @@ class LocalHDF5Backend(StorageBackend):
             session_id = _new_session_id()
         with h5py.File(self.path, 'a') as f:
             grp = f.require_group('sessions').create_group(session_id)
-            grp.attrs['started_at']    = datetime.now(timezone.utc).isoformat()
+            grp.attrs['started_at']    = datetime.now(UTC).isoformat()
             grp.attrs['ended_at']      = ''
             grp.attrs['notes']         = notes
             grp.attrs['device_name']   = device_name
@@ -71,11 +70,11 @@ class LocalHDF5Backend(StorageBackend):
     def end_session(self, session_id, n_frames):
         with h5py.File(self.path, 'a') as f:
             grp = f['sessions'][session_id]
-            grp.attrs['ended_at'] = datetime.now(timezone.utc).isoformat()
+            grp.attrs['ended_at'] = datetime.now(UTC).isoformat()
             grp.attrs['n_frames'] = n_frames
             grp.attrs['n_samples'] = sum(
                 grp[k].shape[0]
-                for k in grp.keys()
+                for k in grp
                 if isinstance(grp[k], h5py.Dataset)
             )
 
@@ -136,15 +135,15 @@ class LocalHDF5Backend(StorageBackend):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _new_session_id() -> str:
-    return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:6]
+    return datetime.now(UTC).strftime('%Y%m%dT%H%M%S') + '_' + uuid.uuid4().hex[:6]
 
 
-def _duration(attrs: dict) -> Optional[float]:
+def _duration(attrs: dict) -> float | None:
     try:
         t0 = datetime.fromisoformat(attrs['started_at'])
         t1 = datetime.fromisoformat(attrs['ended_at'])
         return round((t1 - t0).total_seconds(), 3)
-    except Exception:
+    except (KeyError, TypeError, ValueError):
         return None
 
 

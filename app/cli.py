@@ -12,10 +12,8 @@ Requires root on macOS (libusb USB access):
 """
 
 import argparse
-import os
 import signal
 import sys
-import time
 from pathlib import Path
 
 # Ensure 'core' is importable from wherever the script is called
@@ -34,13 +32,13 @@ def _make_storage(args):
 
 
 def cmd_record(args):
-    from core.recorder import Recorder
     from core.devices.vds1022 import VDS1022Device
+    from core.recorder import Recorder
 
     device  = VDS1022Device()
     storage = _make_storage(args)
 
-    print(f'Connecting to VDS1022...')
+    print('Connecting to VDS1022...')
     device.connect()
 
     info = device.info()
@@ -83,7 +81,7 @@ def cmd_record(args):
 
     session_id = recorder.start(notes=args.notes)
     print(f'Recording  session={session_id}')
-    print(f'Press Ctrl+C to stop.\n')
+    print('Press Ctrl+C to stop.\n')
 
     # Block until the recorder thread finishes
     recorder._thread.join()
@@ -127,7 +125,7 @@ def cmd_info(args):
     print(f'Duration: {s["duration_s"]}s')
     print(f'Frames:   {s["n_frames"]}')
     print(f'Notes:    {s["notes"]}')
-    print(f'Channels:')
+    print('Channels:')
     for ch, info in s['channels'].items():
         print(f'  {ch.upper():4s}  {info["n_samples"]:>10,} samples  '
               f'{info["sample_rate"]/1000:.0f} KS/s  '

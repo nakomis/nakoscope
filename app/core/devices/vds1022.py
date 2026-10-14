@@ -21,8 +21,8 @@ import struct
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
 
@@ -37,7 +37,7 @@ except ImportError:
     if _api_path not in sys.path:
         sys.path.insert(0, _api_path)
     try:
-        import vds1022 as _vds_mod
+        import vds1022 as _vds_mod  # noqa: F401 - availability check after extending sys.path
     except ImportError as e:
         raise ImportError(
             'Cannot import vds1022. Install it with:\n'
@@ -88,7 +88,7 @@ class VDS1022Device(CaptureDevice):
         if self._dev is not None:
             try:
                 self._dev.stop()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 - best-effort stop; disconnect must not fail
                 pass
             self._dev = None
 
@@ -107,7 +107,7 @@ class VDS1022Device(CaptureDevice):
     def configure(
         self,
         sample_rate: float = 250_000.0,
-        channels: list[str] = None,
+        channels: list[str] | None = None,
         v_range: float = 10.0,
         coupling: str = 'DC',
         probe_attenuation: float = 1.0,
@@ -194,7 +194,7 @@ class VDS1022Device(CaptureDevice):
         stderr_line = proc.stderr.readline()
         try:
             info = json.loads(stderr_line)
-        except Exception:
+        except ValueError:
             proc.kill()
             raise RuntimeError(f'nakoscope-capture failed to start: {stderr_line!r}')
 

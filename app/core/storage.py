@@ -24,7 +24,6 @@ Environment variables (override config file):
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
 
 
 class StorageBackend(ABC):
@@ -62,13 +61,13 @@ class StorageBackend(ABC):
     def list_sessions(
         self,
         limit: int = 20,
-        since: Optional[str] = None,
-        search: Optional[str] = None,
+        since: str | None = None,
+        search: str | None = None,
     ) -> list[dict]:
         """Return summary dicts for recent sessions, newest first."""
 
     @abstractmethod
-    def get_session(self, session_id: str) -> Optional[dict]:
+    def get_session(self, session_id: str) -> dict | None:
         """Return full metadata for a session, or None if not found."""
 
     @abstractmethod
@@ -77,15 +76,15 @@ class StorageBackend(ABC):
         session_id: str,
         channel: str,
         max_points: int = 5000,
-        start_s: Optional[float] = None,
-        end_s: Optional[float] = None,
-    ) -> Optional[dict]:
+        start_s: float | None = None,
+        end_s: float | None = None,
+    ) -> dict | None:
         """Return waveform samples for one channel, downsampled if needed."""
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 
-def create_backend(backend: Optional[str] = None, **kwargs) -> StorageBackend:
+def create_backend(backend: str | None = None, **kwargs) -> StorageBackend:
     """Instantiate and return a StorageBackend.
 
     Args:
