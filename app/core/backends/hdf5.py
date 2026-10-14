@@ -78,6 +78,17 @@ class LocalHDF5Backend(StorageBackend):
                 if isinstance(grp[k], h5py.Dataset)
             )
 
+    def set_notes(self, session_id, notes):
+        if not self.path.exists():
+            raise KeyError(session_id)
+        with h5py.File(self.path, 'a') as f:
+            grp = f.get(f'sessions/{session_id}')
+            if grp is None:
+                raise KeyError(session_id)
+            old = grp.attrs.get('notes', '')
+            grp.attrs['notes'] = notes
+        return old
+
     # ── Read ───────────────────────────────────────────────────────────────────
 
     def list_sessions(self, limit=20, since=None, search=None):

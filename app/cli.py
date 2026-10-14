@@ -5,6 +5,7 @@ Commands:
   record   Start a recording session (Ctrl+C to stop).
   list     List recent sessions.
   info     Show details for a specific session.
+  retag    Replace the notes on a recorded session.
 
 Settings are read from ~/.nakoscope.yaml (CLI flags override config).
 Requires root on macOS (libusb USB access):
@@ -132,6 +133,19 @@ def cmd_info(args):
               f'range=±{info["v_range"]/2:.1f}V')
 
 
+def cmd_retag(args):
+    storage = _make_storage(args)
+    try:
+        old = storage.set_notes(args.session_id, args.notes)
+    except KeyError:
+        print(f'Session not found: {args.session_id}', file=sys.stderr)
+        sys.exit(1)
+
+    print(f'Session:   {args.session_id}')
+    print(f'Old notes: {old}')
+    print(f'New notes: {args.notes}')
+
+
 def _add_backend_arg(p):
     p.add_argument(
         '--backend', default=None, choices=['hdf5', 's3'],
@@ -176,8 +190,19 @@ def main():
     p_info.add_argument('session_id')
     _add_backend_arg(p_info)
 
+    # --- retag ---
+    p_retag = sub.add_parser('retag', help="Replace a session's notes")
+    p_retag.add_argument('session_id')
+    p_retag.add_argument('notes', help='New free-text notes for the session')
+    _add_backend_arg(p_retag)
+
     args = parser.parse_args()
-    dispatch = {'record': cmd_record, 'list': cmd_list, 'info': cmd_info}
+    dispatch = {
+        'record': cmd_record,
+        'list':   cmd_list,
+        'info':   cmd_info,
+        'retag':  cmd_retag,
+    }
     dispatch[args.command](args)
 
 
