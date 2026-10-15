@@ -4,11 +4,14 @@ All sessions are stored as groups within a single HDF5 file:
 
   /sessions/<session_id>/
       attrs:  started_at, ended_at, notes, device_name, device_serial,
-              n_frames, n_samples
+              n_frames, n_samples, metadata (JSON; e.g. trigger settings)
       /ch1    float32 dataset (resizable, chunked, gzip-compressed)
+              attrs: sample_rate, v_range, time_offset (s from t = 0 to
+              the first sample; negative for pre-trigger data)
       /ch2    float32 dataset (resizable, chunked, gzip-compressed)
 """
 
+import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,7 +34,8 @@ class LocalHDF5Backend(StorageBackend):
 
     # ── Write ──────────────────────────────────────────────────────────────────
 
-    def start_session(self, notes='', device_name='', device_serial='', session_id=None) -> str:
+    def start_session(self, notes='', device_name='', device_serial='', session_id=None,
+                      metadata=None) -> str:
         if session_id is None:
             session_id = _new_session_id()
         with h5py.File(self.path, 'a') as f:
@@ -43,9 +47,11 @@ class LocalHDF5Backend(StorageBackend):
             grp.attrs['device_serial'] = device_serial
             grp.attrs['n_frames']      = 0
             grp.attrs['n_samples']     = 0
+            grp.attrs['metadata']      = json.dumps(metadata or {})
         return session_id
 
-    def append_frame(self, session_id, channel_name, samples, sample_rate, v_range):
+    def append_frame(self, session_id, channel_name, samples, sample_rate, v_range,
+                     time_offset=0.0):
         key = channel_name.lower()
         with h5py.File(self.path, 'a') as f:
             grp = f['sessions'][session_id]
@@ -61,6 +67,7 @@ class LocalHDF5Backend(StorageBackend):
                 )
                 ds.attrs['sample_rate'] = sample_rate
                 ds.attrs['v_range']     = v_range
+                ds.attrs['time_offset'] = time_offset
             else:
                 ds = grp[key]
             n = ds.shape[0]
@@ -120,6 +127,7 @@ class LocalHDF5Backend(StorageBackend):
                     'n_samples':   grp[k].shape[0],
                     'sample_rate': float(grp[k].attrs.get('sample_rate', 0)),
                     'v_range':     float(grp[k].attrs.get('v_range', 0)),
+                    'time_offset': float(grp[k].attrs.get('time_offset', 0)),
                 }
                 for k in grp
                 if isinstance(grp[k], h5py.Dataset)
@@ -137,10 +145,15 @@ class LocalHDF5Backend(StorageBackend):
             ds          = grp[key]
             sample_rate = float(ds.attrs.get('sample_rate', 0))
             v_range     = float(ds.attrs.get('v_range', 0))
+            t0          = float(ds.attrs.get('time_offset', 0))
             n_total     = ds.shape[0]
-            i0, i1      = _time_slice(n_total, sample_rate, start_s, end_s)
+            i0, i1      = _time_slice(
+                n_total, sample_rate,
+                None if start_s is None else start_s - t0,
+                None if end_s   is None else end_s   - t0,
+            )
             raw         = ds[i0:i1]
-        return _downsample(raw, i0, sample_rate, v_range, max_points)
+        return _downsample(raw, i0, sample_rate, v_range, max_points, t0)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -158,6 +171,13 @@ def _duration(attrs: dict) -> float | None:
         return None
 
 
+def _metadata(attrs: dict) -> dict:
+    try:
+        return json.loads(attrs.get('metadata', '') or '{}')
+    except ValueError:
+        return {}
+
+
 def _session_summary(sid, attrs, channels) -> dict:
     return {
         'session_id':    sid,
@@ -170,6 +190,7 @@ def _session_summary(sid, attrs, channels) -> dict:
         'n_samples':     int(attrs.get('n_samples', 0)),
         'channels':      channels,
         'duration_s':    _duration(attrs),
+        'metadata':      _metadata(attrs),
     }
 
 
@@ -185,16 +206,17 @@ def _session_detail(sid, attrs, channels) -> dict:
         'n_samples':     sum(ch.get('n_samples', 0) for ch in channels.values()),
         'duration_s':    _duration(attrs),
         'channels':      channels,
+        'metadata':      _metadata(attrs),
     }
 
 
 def _time_slice(n_total, sample_rate, start_s, end_s):
-    i0 = int(start_s * sample_rate) if start_s is not None else 0
-    i1 = int(end_s   * sample_rate) if end_s   is not None else n_total
+    i0 = round(start_s * sample_rate) if start_s is not None else 0
+    i1 = round(end_s   * sample_rate) if end_s   is not None else n_total
     return max(0, min(i0, n_total)), max(0, min(i1, n_total))
 
 
-def _downsample(raw, i_offset, sample_rate, v_range, max_points) -> dict:
+def _downsample(raw, i_offset, sample_rate, v_range, max_points, time_offset=0.0) -> dict:
     n = len(raw)
     if n > max_points:
         indices     = np.round(np.linspace(0, n - 1, max_points)).astype(int)
@@ -205,7 +227,7 @@ def _downsample(raw, i_offset, sample_rate, v_range, max_points) -> dict:
         samples     = raw
         downsampled = False
 
-    time_axis = ((i_offset + indices) / sample_rate).tolist() if sample_rate else []
+    time_axis = (time_offset + (i_offset + indices) / sample_rate).tolist() if sample_rate else []
 
     return {
         'samples':     samples.tolist(),
@@ -214,4 +236,5 @@ def _downsample(raw, i_offset, sample_rate, v_range, max_points) -> dict:
         'v_range':     v_range,
         'downsampled': downsampled,
         'original_n':  n,
+        'time_offset': time_offset,
     }

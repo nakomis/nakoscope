@@ -22,6 +22,7 @@ def test_unknown_backend_raises(tmp_path):
 
 
 def test_s3_backend_without_bucket_raises(monkeypatch, tmp_path):
+    pytest.importorskip("boto3")
     monkeypatch.delenv("NAKOSCOPE_S3_BUCKET", raising=False)
     monkeypatch.delenv("NAKOSCOPE_BACKEND", raising=False)
     import app.core.config as cfg_module
