@@ -99,7 +99,7 @@ class VDS1022Device(CaptureDevice):
             # that otherwise keeps it claimed for the life of the process.
             try:
                 self._dev.dispose()
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 - best-effort release; disconnect must not fail
                 pass
             self._dev = None
 

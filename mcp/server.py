@@ -19,11 +19,9 @@ Tools:
 """
 
 import contextlib
-import os
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -65,16 +63,16 @@ def _scope_or_busy():
 
 
 def _resolve_capture_args(
-    channels: Optional[list[str]],
-    sample_rate: Optional[float],
-    v_range: Optional[float],
-    coupling: Optional[str],
-    probe: Optional[float],
+    channels: list[str] | None,
+    sample_rate: float | None,
+    v_range: float | None,
+    coupling: str | None,
+    probe: float | None,
 ) -> dict:
     """Fill in capture parameters from ~/.nakoscope.yaml defaults."""
     from core.config import get
     cap = get('capture') or {}
-    return dict(
+    return dict(  # noqa: C408 - keyword form keeps the aligned defaults readable
         channels          = channels    if channels    is not None else cap.get('channels', ['CH1', 'CH2']),
         sample_rate       = sample_rate if sample_rate is not None else float(cap.get('sample_rate', 250_000)),
         v_range           = v_range     if v_range     is not None else float(cap.get('v_range', 10.0)),
@@ -85,8 +83,8 @@ def _resolve_capture_args(
 
 def _open_recorder(notes: str, capture: dict) -> tuple:
     """Connect the scope, start a recorder, return (recorder, device, session_id)."""
-    from core.recorder import Recorder
     from core.devices.vds1022 import VDS1022Device
+    from core.recorder import Recorder
 
     device  = VDS1022Device()
     storage = _storage()
@@ -250,7 +248,6 @@ def record_for(
     if not _capture_lock.acquire(blocking=False):
         raise RuntimeError('A recording is already in progress')
     try:
-        global _active
         if _active is not None:
             raise RuntimeError('A recording is already in progress')
 
